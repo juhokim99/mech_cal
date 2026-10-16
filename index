@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MechStudio Pro - 기계요소설계 & SFD/BMD 연산기</title>
+  
+  <!-- PWA 필수 메타 태그 -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#38bdf8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2099/2099058.png">
+
+  <!-- PDF 생성 라이브러리 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --accent: #f59e0b;
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+    
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border); padding-bottom: 16px; margin-bottom: 24px; }
+    .header-title h1 { font-size: 1.6rem; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+    .header-title p { font-size: 0.85rem; color: var(--text-muted); }
+    .action-group { display: flex; gap: 8px; align-items: center; }
+
+    .btn { background: var(--card-bg); border: 1px solid var(--card-border); color: #cbd5e1; padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; font-weight: 600; }
+    .btn:hover { background: #334155; color: #fff; }
+    .btn-pdf { background: #0284c7; color: #fff; border: 1px solid #38bdf8; }
+    .btn-pdf:hover { background: #0369a1; }
+
+    .main-grid { display: grid; grid-template-columns: 390px 1fr; gap: 24px; }
+    @media (max-width: 1080px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* 패널 및 인풋 */
+    .panel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    .panel-title { font-size: 1.05rem; font-weight: bold; margin-bottom: 14px; color: var(--primary); display: flex; justify-content: space-between; align-items: center; }
+    
+    .input-group { margin-bottom: 12px; }
+    .input-label { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; }
+    .input-control { display: flex; gap: 8px; align-items: center; }
+    .input-box { width: 100%; background: #0f172a; border: 1px solid var(--card-border); color: #fff; padding: 7px 10px; border-radius: 6px; font-size: 0.9rem; }
+    .input-box:focus { border-color: var(--primary); outline: none; }
+    .unit { font-size: 0.8rem; color: var(--text-muted); min-width: 48px; }
+
+    /* 커스텀 재료 패널 */
+    .custom-mat-panel { background: #131d2e; border: 1px dashed #38bdf8; border-radius: 8px; padding: 12px; margin-top: 10px; display: none; }
+    .custom-mat-panel.active { display: block; }
+    .custom-mat-panel .panel-sub-title { font-size: 0.82rem; color: #38bdf8; margin-bottom: 8px; font-weight: bold; }
+
+    /* 대시보드 카드 */
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .result-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px; position: relative; overflow: hidden; }
+    .result-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary); }
+    .result-card.safe::before { background: var(--success); }
+    .result-card.danger::before { background: var(--danger); }
+    .card-label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; }
+    .card-value { font-size: 1.35rem; font-weight: bold; color: #fff; margin: 3px 0; }
+    .card-sub { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; }
+    .badge { padding: 2px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: bold; }
+    .badge-safe { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
+
+    /* 도면 및 SFD/BMD 캔버스 영역 */
+    .canvas-section { background: #070d17; border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; margin-bottom: 20px; page-break-inside: avoid; }
+    .canvas-title { font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
+
+    /* 상세 풀이 과정 카드 스타일 */
+    .solution-section { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; margin-bottom: 20px; page-break-inside: avoid; }
+    .solution-title { font-size: 1.05rem; font-weight: bold; color: var(--accent); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .deriv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 900px) {
+      .deriv-grid { grid-template-columns: 1fr; }
+    }
+    .deriv-card { background: #0f172a; border: 1px solid var(--card-border); border-left: 3px solid var(--primary); border-radius: 8px; padding: 12px; font-size: 0.83rem; page-break-inside: avoid; }
+    .deriv-card-title { font-weight: bold; color: var(--primary); margin-bottom: 6px; font-size: 0.88rem; }
+    .deriv-line { margin-bottom: 4px; color: #cbd5e1; }
+    .deriv-formula { font-family: "Courier New", Courier, monospace; color: #93c5fd; background: rgba(56, 189, 248, 0.08); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px; }
+    .deriv-subst { font-family: "Courier New", Courier, monospace; color: #facc15; }
+    .deriv-res { color: var(--success); font-weight: bold; margin-top: 4px; }
+
+    /* 요약 표 */
+    .calc-sheet { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin-top: 10px; }
+    .calc-sheet th, .calc-sheet td { padding: 9px 12px; border-bottom: 1px solid var(--card-border); text-align: left; }
+    .calc-sheet th { background: #162032; color: #94a3b8; font-weight: 600; }
+    .calc-sheet tr:hover { background: rgba(255,255,255,0.02); }
+
+    /* PDF 인쇄 최적화 */
+    .pdf-break { page-break-before: always; }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-title">
+      <h1>⚙️ MechStudio Pro</h1>
+      <p>기계요소설계, 보 정역학 SFD/BMD 해석, 상세 풀이과정 & PDF 리포트 연동</p>
+    </div>
+    <div class="action-group">
+      <button class="btn" onclick="loadPreset('standard')">표준 감속기</button>
+      <button class="btn" onclick="loadPreset('heavy')">중하중 플랜트</button>
+      <button class="btn-pdf btn" onclick="exportPDF()">📄 PDF 풀이과정 계산서 다운로드</button>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- 좌측 입력 패널 -->
+    <div class="left-col">
+      <div class="panel">
+        <div class="panel-title">1. 구동원 사양 (Drive Source)</div>
+        <div class="input-group">
+          <div class="input-label"><span>전달 동력 (Power, P)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_power" value="7.5" step="0.5" oninput="calculate()">
+            <span class="unit">kW</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>축 회전속도 (Speed, N)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_rpm" value="1750" step="50" oninput="calculate()">
+            <span class="unit">RPM</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">2. 축 지오메트리 & 하중 (Beam Geometry)</div>
+        <div class="input-group">
+          <div class="input-label"><span>베어링 간 스팬 (Bearing Span, L)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_span_L" value="400" step="10" oninput="calculate()">
+            <span class="unit">mm</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>기어 작용점 거리 (Load Pos, a)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_load_a" value="160" step="10" oninput="calculate()">
+            <span class="unit">mm</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>외경 추가 반경하중 (Radial Load)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_external_fr" value="800" step="50" oninput="calculate()">
+            <span class="unit">N</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">3. 재료 물성치 (Material Properties)</div>
+        <div class="input-group">
+          <div class="input-label"><span>재질 프리셋 선택</span></div>
+          <select class="input-box" id="inp_material" onchange="onMaterialChange()">
+            <option value="SM45C">SM45C (기계구조용 탄소강)</option>
+            <option value="SCM440">SCM440 (크롬몰리브덴 합금강)</option>
+            <option value="SUS304">SUS304 (스테인리스강)</option>
+            <option value="CUSTOM">✏️ 사용자 직접 입력 (Custom)</option>
+          </select>
+        </div>
+
+        <div class="custom-mat-panel" id="custom_mat_box">
+          <div class="panel-sub-title">사용자 정의 기계적 물성치 설정</div>
+          <div class="input-group">
+            <div class="input-label"><span>재료 명칭 (Name)</span></div>
+            <input type="text" class="input-box" id="inp_custom_name" value="Custom Alloy" oninput="calculate()">
+          </div>
+          <div class="input-group">
+            <div class="input-label"><span>항복강도 (Yield, Sy)</span></div>
+            <div class="input-control">
+              <input type="number" class="input-box" id="inp_custom_sy" value="400" step="10" oninput="calculate()">
+              <span class="unit">MPa</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <div class="input-label"><span>인장강도 (Tensile, Sut)</span></div>
+            <div class="input-control">
+              <input type="number" class="input-box" id="inp_custom_sut" value="600" step="10" oninput="calculate()">
+              <span class="unit">MPa</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <div class="input-label"><span>치근 허용 굽힘응력 (σ_allow)</span></div>
+            <div class="input-control">
+              <input type="number" class="input-box" id="inp_custom_allowbend" value="150" step="5" oninput="calculate()">
+              <span class="unit">MPa</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-group" style="margin-top: 10px;">
+          <div class="input-label"><span>목표 설계안전율 (Factor of Safety)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_shaft_sf" value="2.0" step="0.1" oninput="calculate()">
+            <span class="unit">배</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">4. 기어 & 체결 볼트 사양</div>
+        <div class="input-group">
+          <div class="input-label"><span>모듈 (Module, m)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_gear_m" value="3.0" step="0.5" oninput="calculate()">
+            <span class="unit">mm</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>피니언 잇수 (Teeth, z)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_gear_z" value="24" step="1" oninput="calculate()">
+            <span class="unit">개</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>치폭 (Face Width, b)</span></div>
+          <div class="input-control">
+            <input type="number" class="input-box" id="inp_gear_b" value="32" step="2" oninput="calculate()">
+            <span class="unit">mm</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <div class="input-label"><span>플랜지 볼트 규격 (Bolt Size)</span></div>
+          <select class="input-box" id="inp_bolt_size" onchange="calculate()">
+            <option value="M8">M8 (유효단면적 36.6 mm²)</option>
+            <option value="M10" selected>M10 (유효단면적 58.0 mm²)</option>
+            <option value="M12">M12 (유효단면적 84.3 mm²)</option>
+            <option value="M16">M16 (유효단면적 157.0 mm²)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측 출력 및 리포트 영역 (PDF 캡처 대상) -->
+    <div class="right-col" id="report_container">
+      
+      <!-- 리포트 상단 타이틀 (PDF 인쇄 시 공식 문서 헤더 역할) -->
+      <div style="margin-bottom: 16px; border-bottom: 1px solid var(--card-border); padding-bottom: 8px;">
+        <h2 style="color:var(--primary); font-size:1.4rem;">기계요소설계 구조 계산서 및 역학 해석서</h2>
+        <p style="color:var(--text-muted); font-size:0.8rem;" id="report_meta_info">작성일자: 2026. 10. 16 | 규격: KS B 0201 / ASME B106.1M 기준</p>
+      </div>
+
+      <!-- 주요 지표 대시보드 -->
+      <div class="dashboard-grid">
+        <div class="result-card">
+          <div class="card-label">전달 토크 (Torque)</div>
+          <div class="card-value" id="res_torque">40.9 N·m</div>
+          <div class="card-sub">
+            <span>각속도: <span id="res_omega">183.3</span> rad/s</span>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="card-label">최대 굽힘 모멘트 (M_max)</div>
+          <div class="card-value" id="res_mmax">112.5 N·m</div>
+          <div class="card-sub">
+            <span>총 하중: <span id="res_totalload">1.17</span> kN</span>
+          </div>
+        </div>
+
+        <div class="result-card" id="card_shaft">
+          <div class="card-label">추천 축 직경 (Shaft Dia)</div>
+          <div class="card-value" id="res_shaft_dia">φ25 mm</div>
+          <div class="card-sub">
+            <span>소요: <span id="res_shaft_req">21.4</span> mm</span>
+            <span class="badge badge-safe" id="badge_shaft">표준 적합</span>
+          </div>
+        </div>
+
+        <div class="result-card" id="card_gear">
+          <div class="card-label">기어 굽힘 안전율</div>
+          <div class="card-value" id="res_gear_sf">2.45 배</div>
+          <div class="card-sub">
+            <span>응력: <span id="res_gear_stress">49.0</span> MPa</span>
+            <span class="badge badge-safe" id="badge_gear">안전 (SF≥1.5)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2D 조립도 -->
+      <div class="canvas-section">
+        <div class="canvas-title">
+          <span>1. 2D 전동축 조립 개략도 (SCHEMATIC ASSEMBLY)</span>
+          <span style="font-size:0.75rem; color:#64748b;">좌측 베어링 A (기준점) | 우측 베어링 B</span>
+        </div>
+        <canvas id="assemblyCanvas" width="700" height="170"></canvas>
+      </div>
+
+      <!-- SFD / BMD 선도 -->
+      <div class="canvas-section">
+        <div class="canvas-title">
+          <span>2. 보 정역학 실시간 SFD & BMD 선도 (SHEAR & MOMENT DIAGRAMS)</span>
+          <span style="font-size:0.75rem; color:var(--primary);" id="res_reactions">R_A: 0 N | R_B: 0 N</span>
+        </div>
+        <canvas id="diagramCanvas" width="700" height="240"></canvas>
+      </div>
+
+      <!-- 💡 상세 풀이과정 (PDF 출력에 완벽 포함) -->
+      <div class="solution-section">
+        <div class="solution-title">
+          <span>📐 상세 수식 유도 및 풀이 과정 (Step-by-Step Derivations)</span>
+        </div>
+        <div class="deriv-grid" id="deriv_content">
+          <!-- calculate()에 의해 자동 전개 -->
+        </div>
+      </div>
+
+      <!-- 상세 요약 표 -->
+      <div class="panel" style="margin-bottom: 0; page-break-inside: avoid;">
+        <div class="panel-title">
+          <span>📋 설계 결과 종합 검증서</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);" id="res_material_badge">SM45C 기준</span>
+        </div>
+        <table class="calc-sheet">
+          <thead>
+            <tr>
+              <th>기계요소 항목</th>
+              <th>적용 공식</th>
+              <th>계산 수치</th>
+              <th>판정 및 선정 규격</th>
+            </tr>
+          </thead>
+          <tbody id="sheet_body"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const STANDARD_SHAFTS = [15, 17, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100];
+
+    const BEARING_TABLE = {
+      15: { model: '6202', C: 7800 },
+      17: { model: '6203', C: 9550 },
+      20: { model: '6204', C: 12800 },
+      25: { model: '6205', C: 14000 },
+      30: { model: '6206', C: 19500 },
+      35: { model: '6207', C: 25500 },
+      40: { model: '6208', C: 30700 },
+      45: { model: '6209', C: 32500 },
+      50: { model: '6210', C: 35100 }
+    };
+
+    const BOLT_SPECS = {
+      'M8': { d: 8, As: 36.6 },
+      'M10': { d: 10, As: 58.0 },
+      'M12': { d: 12, As: 84.3 },
+      'M16': { d: 16, As: 157.0 }
+    };
+
+    const PRESET_MATERIALS = {
+      'SM45C': { name: 'SM45C', Sy: 343, Sut: 569, allowBend: 120 },
+      'SCM440': { name: 'SCM440', Sy: 685, Sut: 980, allowBend: 220 },
+      'SUS304': { name: 'SUS304', Sy: 205, Sut: 520, allowBend: 85 }
+    };
+
+    function onMaterialChange() {
+      const matKey = document.getElementById('inp_material').value;
+      const customBox = document.getElementById('custom_mat_box');
+      if (matKey === 'CUSTOM') {
+        customBox.classList.add('active');
+      } else {
+        customBox.classList.remove('active');
+      }
+      calculate();
+    }
+
+    function getActiveMaterial() {
+      const matKey = document.getElementById('inp_material').value;
+      if (matKey === 'CUSTOM') {
+        return {
+          name: document.getElementById('inp_custom_name').value || 'Custom Material',
+          Sy: parseFloat(document.getElementById('inp_custom_sy').value) || 300,
+          Sut: parseFloat(document.getElementById('inp_custom_sut').value) || 500,
+          allowBend: parseFloat(document.getElementById('inp_custom_allowbend').value) || 100
+        };
+      }
+      return PRESET_MATERIALS[matKey];
+    }
+
+    function calculate() {
+      const P = parseFloat(document.getElementById('inp_power').value) || 0;
+      const N = parseFloat(document.getElementById('inp_rpm').value) || 1;
+      const mat = getActiveMaterial();
+      const shaftSF = parseFloat(document.getElementById('inp_shaft_sf').value) || 2.0;
+
+      let L = parseFloat(document.getElementById('inp_span_L').value) || 300;
+      let a = parseFloat(document.getElementById('inp_load_a').value) || 150;
+      if (a >= L) a = L - 10;
+      const b = L - a;
+      const extFr = parseFloat(document.getElementById('inp_external_fr').value) || 0;
+
+      const m = parseFloat(document.getElementById('inp_gear_m').value) || 3.0;
+      const z = parseInt(document.getElementById('inp_gear_z').value) || 20;
+      const gearB = parseFloat(document.getElementById('inp_gear_b').value) || 30;
+      const dp = m * z;
+
+      const boltKey = document.getElementById('inp_bolt_size').value;
+      const bolt = BOLT_SPECS[boltKey];
+
+      // 1. 토크 계산
+      const omega = (2 * Math.PI * N) / 60;
+      const T = (P * 1000) / omega; // N·m
+
+      // 2. 기어 작용력 계산
+      const Ft = (2000 * T) / dp; // N
+      const Fr_gear = Ft * Math.tan(20 * Math.PI / 180);
+      const F_radial_total = Fr_gear + extFr;
+      const F_total = Math.sqrt(Math.pow(Ft, 2) + Math.pow(F_radial_total, 2));
+
+      // 3. 지지 반력 및 굽힘 모멘트 계산
+      const RA = F_total * (b / L);
+      const RB = F_total * (a / L);
+      const M_max = RA * (a / 1000); // N·m
+
+      // 4. 전동축 ASME 피로 파손식 연산
+      const tau_allow = (0.5 * mat.Sy) / shaftSF;
+      const Te = Math.sqrt(Math.pow(M_max, 2) + Math.pow(T, 2));
+      const d_req = Math.pow((16 * Te * 1000) / (Math.PI * tau_allow), 1/3);
+
+      let d_std = STANDARD_SHAFTS[STANDARD_SHAFTS.length - 1];
+      for (let s of STANDARD_SHAFTS) {
+        if (s >= d_req) {
+          d_std = s;
+          break;
+        }
+      }
+
+      // 5. 평기어 루이스 굽힘강도
+      const Y = 0.32;
+      const sigma_b = Ft / (gearB * m * Y);
+      const gearSF = mat.allowBend / sigma_b;
+
+      // 6. 베어링 L10h 수명
+      const maxBrgLoad = Math.max(RA, RB);
+      const brgInfo = BEARING_TABLE[d_std] || { model: `620${Math.round(d_std/5)}`, C: d_std * 650 };
+      const L10h = (1000000 / (60 * N)) * Math.pow((brgInfo.C / maxBrgLoad), 3);
+
+      // 7. 볼트 체결 토크
+      const boltSy = 640;
+      const Fi = 0.7 * bolt.As * boltSy;
+      const T_bolt = (0.2 * bolt.d * Fi) / 1000;
+
+      // 상단 지표 업데이트
+      document.getElementById('res_torque').innerText = `${T.toFixed(1)} N·m`;
+      document.getElementById('res_omega').innerText = omega.toFixed(1);
+      document.getElementById('res_mmax').innerText = `${M_max.toFixed(1)} N·m`;
+      document.getElementById('res_totalload').innerText = `${(F_total/1000).toFixed(2)}`;
+      document.getElementById('res_shaft_dia').innerText = `φ${d_std} mm`;
+      document.getElementById('res_shaft_req').innerText = d_req.toFixed(1);
+      document.getElementById('res_gear_sf').innerText = `${gearSF.toFixed(2)} 배`;
+      document.getElementById('res_gear_stress').innerText = sigma_b.toFixed(1);
+
+      const gearBadge = document.getElementById('badge_gear');
+      const gearCard = document.getElementById('card_gear');
+      if (gearSF >= 1.5) {
+        gearBadge.className = 'badge badge-safe';
+        gearBadge.innerText = `안전 (SF=${gearSF.toFixed(1)})`;
+        gearCard.className = 'result-card safe';
+      } else {
+        gearBadge.className = 'badge badge-danger';
+        gearBadge.innerText = `위험 (SF=${gearSF.toFixed(1)})`;
+        gearCard.className = 'result-card danger';
+      }
+
+      document.getElementById('res_reactions').innerText = `반력: R_A = ${RA.toFixed(0)} N | R_B = ${RB.toFixed(0)} N (M_max = ${M_max.toFixed(1)} N·m)`;
+      document.getElementById('res_material_badge').innerText = `${mat.name} (Sy=${mat.Sy}MPa, σ_a=${mat.allowBend}MPa)`;
+
+      // --- 💡 상세 풀이 과정 카드 동적 생성 ---
+      const derivBox = document.getElementById('deriv_content');
+      derivBox.innerHTML = `
+        <!-- 단계 1: 토크 계산 -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 1] 구동 토크 및 각속도 연산</div>
+          <div class="deriv-line"><span class="deriv-formula">ω = 2π·N / 60</span> = 2π·${N} / 60 = <b>${omega.toFixed(2)} rad/s</b></div>
+          <div class="deriv-line"><span class="deriv-formula">T = (P · 1000) / ω</span></div>
+          <div class="deriv-line">대입: T = (${P} × 1000) / ${omega.toFixed(2)}</div>
+          <div class="deriv-res">↳ 설계 토크 (T) = ${T.toFixed(2)} N·m</div>
+        </div>
+
+        <!-- 단계 2: 기어 하중 계산 -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 2] 기어 치면력 및 합성 하중</div>
+          <div class="deriv-line"><span class="deriv-formula">dp = m·z</span> = ${m} × ${z} = ${dp.toFixed(1)} mm</div>
+          <div class="deriv-line"><span class="deriv-formula">Ft = 2000·T / dp</span> = (2000 × ${T.toFixed(1)}) / ${dp.toFixed(1)} = <b>${Ft.toFixed(1)} N</b></div>
+          <div class="deriv-line"><span class="deriv-formula">Fr_tot = Ft·tan(20°) + F_ext</span> = ${Fr_gear.toFixed(1)} + ${extFr} = <b>${F_radial_total.toFixed(1)} N</b></div>
+          <div class="deriv-res">↳ 총 작용하중 (F_tot) = √(Ft² + Fr²) = ${F_total.toFixed(1)} N</div>
+        </div>
+
+        <!-- 단계 3: 보 정역학 해석 (반력 및 BMD 피크) -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 3] 보 정역학 평형 (SFD / BMD)</div>
+          <div class="deriv-line">지간 L = ${L} mm, 기어 위치 a = ${a} mm, b = ${b} mm</div>
+          <div class="deriv-line"><span class="deriv-formula">ΣM_B = 0 ⟹ R_A = F_tot · (b / L)</span></div>
+          <div class="deriv-line">대입: R_A = ${F_total.toFixed(1)} × (${b} / ${L}) = <b>${RA.toFixed(1)} N</b></div>
+          <div class="deriv-line"><span class="deriv-formula">ΣF_y = 0 ⟹ R_B = F_tot · (a / L)</span> = <b>${RB.toFixed(1)} N</b></div>
+          <div class="deriv-res">↳ 최대 굽힘모멘트 (M_max) = R_A × a = ${M_max.toFixed(2)} N·m</div>
+        </div>
+
+        <!-- 단계 4: 축 직경 결정 (ASME 설계식) -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 4] 전동축 직경 결정 (ASME 식)</div>
+          <div class="deriv-line"><span class="deriv-formula">τ_allow = (0.5 · Sy) / SF</span> = (0.5 × ${mat.Sy}) / ${shaftSF} = <b>${tau_allow.toFixed(2)} MPa</b></div>
+          <div class="deriv-line"><span class="deriv-formula">Te = √(M_max² + T²)</span> = √(${M_max.toFixed(1)}² + ${T.toFixed(1)}²) = <b>${Te.toFixed(2)} N·m</b></div>
+          <div class="deriv-line"><span class="deriv-formula">d_req = [(16·Te·10³)/(π·τ_a)]^(1/3)</span></div>
+          <div class="deriv-line">대입: [ (16 × ${Te.toFixed(1)} × 10³) / (π × ${tau_allow.toFixed(2)}) ]^(1/3) = <b>${d_req.toFixed(2)} mm</b></div>
+          <div class="deriv-res">↳ KS 상용 표준 규격 채택: φ${d_std} mm (${d_std} ≥ ${d_req.toFixed(1)})</div>
+        </div>
+
+        <!-- 단계 5: 기어 치근 굽힘응력 및 안전율 -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 5] 평기어 치근 굽힘강도 (Lewis)</div>
+          <div class="deriv-line"><span class="deriv-formula">σ_b = Ft / (b · m · Y)</span> (치형계수 Y = ${Y})</div>
+          <div class="deriv-line">대입: ${Ft.toFixed(1)} / (${gearB} × ${m} × ${Y}) = <b>${sigma_b.toFixed(2)} MPa</b></div>
+          <div class="deriv-line"><span class="deriv-formula">SF_gear = σ_allow / σ_b</span> = ${mat.allowBend} / ${sigma_b.toFixed(2)}</div>
+          <div class="deriv-res">↳ 안전율 = ${gearSF.toFixed(2)} 배 (${gearSF >= 1.5 ? '합격 / 안전' : '불합격 / 보강요망'})</div>
+        </div>
+
+        <!-- 단계 6: 베어링 수명 및 볼트 체결 토크 -->
+        <div class="deriv-card">
+          <div class="deriv-card-title">[Step 6] 베어링 수명 & 볼트 체결 토크</div>
+          <div class="deriv-line"><span class="deriv-formula">L10h = (10⁶ / 60N) · (C / P_eq)³</span> (P_eq = max(RA, RB) = ${maxBrgLoad.toFixed(0)} N)</div>
+          <div class="deriv-line">베어링 ${brgInfo.model} (C = ${brgInfo.C} N) ⟹ <b>${Math.min(999999, Math.round(L10h)).toLocaleString()} 시간</b></div>
+          <div class="deriv-line"><span class="deriv-formula">Fi = 0.7·As·Sy</span> = 0.7 × ${bolt.As} × ${boltSy} = ${(Fi/1000).toFixed(2)} kN</div>
+          <div class="deriv-res">↳ ${boltKey} 적정 체결 토크 (T_bolt) = 0.2·d·Fi = ${T_bolt.toFixed(1)} N·m</div>
+        </div>
+      `;
+
+      // 상세 요약 표 갱신
+      document.getElementById('sheet_body').innerHTML = `
+        <tr>
+          <td><b>1. 구동 토크 (Torque)</b></td>
+          <td>T = 9549 · P / N</td>
+          <td><b>${T.toFixed(1)} N·m</b></td>
+          <td>${P} kW @ ${N} RPM</td>
+        </tr>
+        <tr>
+          <td><b>2. 작용 하중 (Total Gear Load)</b></td>
+          <td>F_tot = √(Ft² + Fr²)</td>
+          <td>Ft: ${Ft.toFixed(0)} N / Fr: ${F_radial_total.toFixed(0)} N</td>
+          <td>합력 <b>${F_total.toFixed(0)} N</b></td>
+        </tr>
+        <tr>
+          <td><b>3. 지지 반력 (Reactions)</b></td>
+          <td>RA = F·(b/L), RB = F·(a/L)</td>
+          <td>RA: <b>${RA.toFixed(0)} N</b> / RB: <b>${RB.toFixed(0)} N</b></td>
+          <td>지간 L = ${L} mm (a=${a} mm)</td>
+        </tr>
+        <tr>
+          <td><b>4. 최대 굽힘모멘트 (Bending)</b></td>
+          <td>M_max = RA · a</td>
+          <td><b>${M_max.toFixed(1)} N·m</b></td>
+          <td>기어 작용점 (x = ${a} mm)</td>
+        </tr>
+        <tr>
+          <td><b>5. 전동축 직경 (Shaft Dia)</b></td>
+          <td>d_req = [(16·Te)/(π·τ_a)]^(1/3)</td>
+          <td>최소요구: ${d_req.toFixed(2)} mm</td>
+          <td><b>KS 표준규격 φ${d_std} mm 채택</b></td>
+        </tr>
+        <tr>
+          <td><b>6. 기어 굽힘 강도 (Lewis)</b></td>
+          <td>σ_b = Ft / (b · m · Y)</td>
+          <td>발생응력: ${sigma_b.toFixed(1)} MPa</td>
+          <td>허용 ${mat.allowBend} MPa (안전율: <b>${gearSF.toFixed(2)}</b>)</td>
+        </tr>
+        <tr>
+          <td><b>7. 베어링 L10h 수명</b></td>
+          <td>L10h = (10⁶ / 60N) · (C / F_max)³</td>
+          <td>계산수명: ${Math.min(999999, Math.round(L10h)).toLocaleString()} hr</td>
+          <td><b>${brgInfo.model}</b> (동정격하중 ${brgInfo.C} N)</td>
+        </tr>
+        <tr>
+          <td><b>8. 플랜지 체결 볼트</b></td>
+          <td>T_bolt = 0.2 · d · (0.7·As·Sy)</td>
+          <td>조임력: ${(Fi/1000).toFixed(1)} kN</td>
+          <td><b>${boltKey}</b> 기준 체결 토크: <b>${T_bolt.toFixed(1)} N·m</b></td>
+        </tr>
+      `;
+
+      drawAssembly(L, a, d_std, dp, gearB);
+      drawSFD_BMD(L, a, RA, RB, M_max);
+    }
+
+    function drawAssembly(L, a, shaftDia, gearDp, gearB) {
+      const cvs = document.getElementById('assemblyCanvas');
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      const marginX = 80;
+      const plotW = cvs.width - 2 * marginX;
+      const midY = 85;
+      const scaleX = plotW / L;
+
+      ctx.strokeStyle = '#142033';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < cvs.width; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cvs.height); ctx.stroke(); }
+
+      ctx.strokeStyle = '#ef4444';
+      ctx.setLineDash([10, 4, 2, 4]);
+      ctx.beginPath(); ctx.moveTo(marginX - 30, midY); ctx.lineTo(cvs.width - marginX + 30, midY); ctx.stroke();
+      ctx.setLineDash([]);
+
+      const sH = Math.max(16, shaftDia * 1.3);
+      ctx.fillStyle = '#475569';
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.fillRect(marginX, midY - sH/2, plotW, sH);
+      ctx.strokeRect(marginX, midY - sH/2, plotW, sH);
+
+      const brgW = 26;
+      const brgH = sH + 34;
+      [marginX, marginX + plotW].forEach((bx, idx) => {
+        const xOffset = -brgW/2;
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.fillRect(bx + xOffset, midY - brgH/2, brgW, brgH);
+        ctx.strokeRect(bx + xOffset, midY - brgH/2, brgW, brgH);
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath(); ctx.arc(bx, midY - sH/2 - 8, 4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(bx, midY + sH/2 + 8, 4, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '10px monospace';
+        ctx.fillText(idx === 0 ? 'BRG_A' : 'BRG_B', bx - 16, midY + brgH/2 + 15);
+      });
+
+      const gx = marginX + a * scaleX;
+      const gw = Math.max(22, gearB * 0.9);
+      const gh = Math.max(65, Math.min(130, gearDp * 1.1));
+
+      ctx.fillStyle = '#0284c7';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.fillRect(gx - gw/2, midY - gh/2, gw, gh);
+      ctx.strokeRect(gx - gw/2, midY - gh/2, gw, gh);
+
+      ctx.fillStyle = '#f59e0b';
+      for (let tx = gx - gw/2; tx <= gx + gw/2 - 6; tx += 9) {
+        ctx.fillRect(tx, midY - gh/2 - 8, 6, 8);
+        ctx.fillRect(tx, midY + gh/2, 6, 8);
+      }
+
+      ctx.strokeStyle = '#ef4444';
+      ctx.fillStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(gx, midY - gh/2 - 35);
+      ctx.lineTo(gx, midY - gh/2 - 5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(gx - 5, midY - gh/2 - 12);
+      ctx.lineTo(gx, midY - gh/2 - 3);
+      ctx.lineTo(gx + 5, midY - gh/2 - 12);
+      ctx.fill();
+
+      ctx.font = '11px sans-serif';
+      ctx.fillText('F_load', gx + 8, midY - gh/2 - 20);
+    }
+
+    function drawSFD_BMD(L, a, RA, RB, M_max) {
+      const cvs = document.getElementById('diagramCanvas');
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+      const marginX = 80;
+      const plotW = cvs.width - 2 * marginX;
+      const scaleX = plotW / L;
+      const gx = marginX + a * scaleX;
+
+      const sfdZeroY = 60;
+      const bmdZeroY = 180;
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      [marginX, gx, marginX + plotW].forEach(x => {
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x, 15); ctx.lineTo(x, 230); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(marginX - 20, sfdZeroY); ctx.lineTo(marginX + plotW + 20, sfdZeroY); ctx.stroke();
+
+      const maxShear = Math.max(RA, RB, 1);
+      const sfdScaleY = 38 / maxShear;
+
+      const yA = sfdZeroY - RA * sfdScaleY;
+      const yB = sfdZeroY + RB * sfdScaleY;
+
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.fillRect(marginX, yA, a * scaleX, RA * sfdScaleY);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+      ctx.fillRect(gx, sfdZeroY, (L - a) * scaleX, RB * sfdScaleY);
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(marginX, sfdZeroY);
+      ctx.lineTo(marginX, yA);
+      ctx.lineTo(gx, yA);
+      ctx.lineTo(gx, yB);
+      ctx.lineTo(marginX + plotW, yB);
+      ctx.lineTo(marginX + plotW, sfdZeroY);
+      ctx.stroke();
+
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(`+${RA.toFixed(0)} N`, marginX + 8, yA - 6);
+      ctx.fillStyle = '#f87171';
+      ctx.fillText(`-${RB.toFixed(0)} N`, marginX + plotW - 65, yB + 14);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('[SFD: 전단력]', 15, sfdZeroY + 4);
+
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(marginX - 20, bmdZeroY); ctx.lineTo(marginX + plotW + 20, bmdZeroY); ctx.stroke();
+
+      const bmdScaleY = M_max > 0 ? (50 / M_max) : 1;
+      const peakM_Y = bmdZeroY - M_max * bmdScaleY;
+
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(marginX, bmdZeroY);
+      ctx.lineTo(gx, peakM_Y);
+      ctx.lineTo(marginX + plotW, bmdZeroY);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(marginX, bmdZeroY);
+      ctx.lineTo(gx, peakM_Y);
+      ctx.lineTo(marginX + plotW, bmdZeroY);
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillText(`M_max = ${M_max.toFixed(1)} N·m`, gx - 45, peakM_Y - 8);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('[BMD: 굽힘모멘트]', 10, bmdZeroY + 4);
+    }
+
+    // --- 💡 PDF 풀이과정 출력 엔진 ---
+    function exportPDF() {
+      const element = document.getElementById('report_container');
+      const opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     `MechStudio_Detailed_Calculation_${new Date().toISOString().slice(0,10)}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0b1120' },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+      };
+
+      html2pdf().set(opt).from(element).save().catch(err => {
+        console.error("PDF 생성 에러:", err);
+        window.print();
+      });
+    }
+
+    function loadPreset(type) {
+      if (type === 'standard') {
+        document.getElementById('inp_power').value = 7.5;
+        document.getElementById('inp_rpm').value = 1750;
+        document.getElementById('inp_span_L').value = 400;
+        document.getElementById('inp_load_a').value = 160;
+        document.getElementById('inp_external_fr').value = 800;
+        document.getElementById('inp_material').value = 'SM45C';
+        document.getElementById('inp_gear_m').value = 3.0;
+        document.getElementById('inp_gear_z').value = 24;
+        document.getElementById('inp_gear_b').value = 32;
+      } else if (type === 'heavy') {
+        document.getElementById('inp_power').value = 22.0;
+        document.getElementById('inp_rpm').value = 950;
+        document.getElementById('inp_span_L').value = 600;
+        document.getElementById('inp_load_a').value = 240;
+        document.getElementById('inp_external_fr').value = 2500;
+        document.getElementById('inp_material').value = 'SCM440';
+        document.getElementById('inp_gear_m').value = 5.0;
+        document.getElementById('inp_gear_z').value = 28;
+        document.getElementById('inp_gear_b').value = 50;
+      }
+      onMaterialChange();
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.error('PWA Reg Error:', err));
+      });
+    }
+
+    window.onload = () => {
+      calculate();
+    };
+  </script>
+</body>
+</html>
